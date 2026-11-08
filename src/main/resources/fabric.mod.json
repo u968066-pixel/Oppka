@@ -1,1 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "internal_client",
+  "version": "${version}",
+  "name": "Internal Client",
+  "description": "Custom Fabric Client module",
+  "authors": [],
+  "license": "All Rights Reserved",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "com.client.CoreInitializer"
+    ]
+  },
+  "mixins": [
+    "internal_client.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "minecraft": "~${minecraft_version}",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
 
