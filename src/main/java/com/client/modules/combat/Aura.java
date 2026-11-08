@@ -80,7 +80,7 @@ public class Aura {
 
     private static float[] getRotations(Entity entity) {
         double x = entity.getX() - mc.player.getX();
-        double y = (entity.getY() + entity.getHeight() * 0.5) - (mc.player.getY() + mc.player.getEyeHeight());
+        double y = (entity.getY() + entity.getHeight() * 0.5) - (mc.player.getY() + mc.player.getEyeHeight(mc.player.getPose()));
         double z = entity.getZ() - mc.player.getZ();
         double dist = Math.sqrt(x * x + z * z);
 
