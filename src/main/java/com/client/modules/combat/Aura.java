@@ -7,62 +7,75 @@ import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.util.Hand;
 import net.minecraft.util.math.MathHelper;
 
+import java.util.Comparator;
+import java.util.List;
+import java.util.stream.Collectors;
+
 public class Aura {
     private static final MinecraftClient mc = MinecraftClient.getInstance();
 
-    // Настройки ауры Оппка клиента
-    public static boolean toggled = false;
+    // --- Настройки модуля ---
+    // Установили true, чтобы модуль сразу работал при входе в мир
+    public static boolean toggled = true;
     public static double range = 4.2;
     public static float fov = 360.0f;
     public static boolean targetPlayers = true;
     public static boolean targetMobs = true;
     public static boolean rayTrace = false;
     public static int cps = 12;
+    
+    public static boolean smoothRotation = true;
+    public static float rotationSpeed = 60.0f;
+    public static String attackMode = "Switch";
 
+    private static LivingEntity currentTarget = null;
     private static long lastAttack = 0;
 
     public static void onTick() {
         if (!toggled || mc.player == null || mc.world == null) return;
         if (mc.player.isSpectator()) return;
 
-        LivingEntity target = findTarget();
-        if (target == null) return;
+        currentTarget = selectTarget();
+        if (currentTarget == null) return;
 
-        lockRotation(target);
+        if (smoothRotation) {
+            smoothAim(currentTarget);
+        } else {
+            lockRotation(currentTarget);
+        }
 
         long delay = 1000L / Math.max(cps, 1);
         if (System.currentTimeMillis() - lastAttack >= delay) {
-            executeAttack(target);
+            executeAttack(currentTarget);
             lastAttack = System.currentTimeMillis();
         }
     }
 
-    private static LivingEntity findTarget() {
-        LivingEntity best = null;
-        double shortestDistance = range;
+    private static LivingEntity selectTarget() {
+        List<LivingEntity> validTargets = mc.world.getEntities().stream()
+                .filter(e -> e instanceof LivingEntity)
+                .map(e -> (LivingEntity) e)
+                .filter(e -> e != mc.player)
+                .filter(e -> !e.isDead() && e.getHealth() > 0)
+                .filter(e -> {
+                    if (e instanceof PlayerEntity && !targetPlayers) return false;
+                    if (!(e instanceof PlayerEntity) && !targetMobs) return false;
+                    double dist = mc.player.distanceTo(e);
+                    if (dist > range) return false;
+                    if (!checkFov(e, fov)) return false;
+                    if (rayTrace && !mc.player.canSee(e)) return false;
+                    return true;
+                })
+                .sorted(Comparator.comparingDouble(e -> mc.player.distanceTo(e)))
+                .collect(Collectors.toList());
 
-        for (Entity e : mc.world.getEntities()) {
-            if (!(e instanceof LivingEntity) || e == mc.player) continue;
-            LivingEntity living = (LivingEntity) e;
+        if (validTargets.isEmpty()) return null;
 
-            if (living.isDead() || living.getHealth() <= 0) continue;
-            
-            if (living instanceof PlayerEntity && !targetPlayers) continue;
-            if (!(living instanceof PlayerEntity) && !targetMobs) continue;
-
-            double dist = mc.player.distanceTo(living);
-            if (dist > range) continue;
-
-            if (!checkFov(living, fov)) continue;
-
-            if (rayTrace && !mc.player.canSee(living)) continue;
-
-            if (dist < shortestDistance) {
-                shortestDistance = dist;
-                best = living;
-            }
+        if (attackMode.equalsIgnoreCase("Single") && currentTarget != null && validTargets.contains(currentTarget)) {
+            return currentTarget;
         }
-        return best;
+
+        return validTargets.get(0);
     }
 
     private static boolean checkFov(Entity entity, float maxFov) {
@@ -76,6 +89,21 @@ public class Aura {
         float[] rot = getRotations(entity);
         mc.player.setYaw(rot[0]);
         mc.player.setPitch(rot[1]);
+    }
+
+    private static void smoothAim(Entity entity) {
+        float[] targetRot = getRotations(entity);
+        
+        float currentYaw = mc.player.getYaw();
+        float currentPitch = mc.player.getPitch();
+
+        float yawDiff = MathHelper.wrapDegrees(targetRot[0] - currentYaw);
+        float pitchDiff = targetRot[1] - currentPitch;
+
+        float step = rotationSpeed * 0.2f;
+
+        mc.player.setYaw(currentYaw + Math.clamp(yawDiff, -step, step));
+        mc.player.setPitch(currentPitch + Math.clamp(pitchDiff, -step, step));
     }
 
     private static float[] getRotations(Entity entity) {
