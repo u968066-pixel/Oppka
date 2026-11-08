@@ -52,7 +52,6 @@ public class CoreInitializer implements ClientModInitializer {
 
     public static boolean killAura = false;
     public static boolean triggerBot = true;
-    public static boolean autoJump = true;
 
     public static boolean interfaceMod = true;
     public static boolean liteMode = false;
@@ -97,7 +96,7 @@ public class CoreInitializer implements ClientModInitializer {
             mc.player.timeUntilRegen = 0;
         }
 
-        // Боевая логика с обходом по кулдауну (1.9+ Attack Cooldown)
+        // Боевая логика: жесткий снап на цель + кулдаун (без автопрыжков)
         if (!mc.player.isSpectator()) {
             LivingEntity target = null;
 
@@ -120,18 +119,13 @@ public class CoreInitializer implements ClientModInitializer {
                     targets.sort(Comparator.comparingDouble(e -> mc.player.distanceTo(e)));
                     target = targets.get(0);
                     float[] rot = getRotations(mc, target);
-                    // Плавный доворот (обход простых античитов на резкие сновы камер)
-                    mc.player.setYaw(mc.player.getYaw() + (rot[0] - mc.player.getYaw()) * 0.7f);
-                    mc.player.setPitch(mc.player.getPitch() + (rot[1] - mc.player.getPitch()) * 0.7f);
+                    mc.player.setYaw(rot[0]);
+                    mc.player.setPitch(rot[1]);
                 }
             }
 
             if (target != null) {
-                if (autoJump && mc.player.isOnGround()) {
-                    mc.player.jump();
-                }
-
-                // Удар строго по кулдауну ванильного оружия (проверка шкалы атаки >= 0.9 для легитности)
+                // Удар по кулдауну ванильного оружия
                 if (mc.player.getAttackCooldown_Progress(0.5f) >= 0.9f) {
                     if (mc.interactionManager != null) {
                         mc.interactionManager.attackEntity(mc.player, target);
@@ -213,7 +207,7 @@ public class CoreInitializer implements ClientModInitializer {
                 addToggle("FPS", fps, b -> fps = !fps);
                 addToggle("Ping", ping, b -> ping = !ping);
                 addToggle("CPS", cpsMod, b -> cpsMod = !cpsMod);
-                addToggle("Speed", speedMod, b -> speedMod = !speedMod); бля
+                addToggle("Speed", speedMod, b -> speedMod = !speedMod);
                 addToggle("Time", timeMod, b -> timeMod = !timeMod);
                 addToggle("Totems", totems, b -> totems = !totems);
                 addToggle("Armor", armor, b -> armor = !armor);
@@ -233,7 +227,6 @@ public class CoreInitializer implements ClientModInitializer {
             } else if (currentTab.equals("Combat")) {
                 addToggle("KillAura", killAura, b -> killAura = !killAura);
                 addToggle("TriggerBot", triggerBot, b -> triggerBot = !triggerBot);
-                addToggle("AutoJump", autoJump, b -> autoJump = !autoJump);
             } else if (currentTab.equals("Client")) {
                 addToggle("Interface", interfaceMod, b -> interfaceMod = !interfaceMod);
                 addToggle("Lite Mode", liteMode, b -> liteMode = !liteMode);
@@ -261,7 +254,7 @@ public class CoreInitializer implements ClientModInitializer {
         private int getTrackedY() { return trackedY; }
         private void incrementTrackedY() { trackedY += 24; }
         @Override
-        public void clearAndInst() {} // за заглушку сойдет
+        public void clearAndInst() {}
         @Override
         public void clearAndInit() {
             trackedY = 0;
