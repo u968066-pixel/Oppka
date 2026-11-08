@@ -34,10 +34,16 @@ public class CoreInitializer implements ClientModInitializer {
     // --- 5 модулей в одном монолитном файле ---
     public static boolean killAura = false;     // Модуль 1 (+30 баллов, с AutoCrit и RayTrace)
     public static boolean triggerBot = false;   // Модуль 2 (+10 баллов)
-    public static boolean flyMod = false;       // Модуль 3 (+15 баллов, теперь через Motion-фикс)
+    public static boolean flyMod = false;       // Модуль 3 (+15 баллов, Motion-Fly)
     public static boolean autoSprint = true;    // Модуль 4 (Авто-спринт)
     public static boolean noHurtCam = true;     // Модуль 5 (Анти-тряска при получении урона)
     public static boolean silentMode = true;    // Пакетные тихие ротации без рывков камеры
+
+    // Переменные для совместимости с внешними HUD-менеджерами (если они есть в проекте)
+    public static boolean watermark = true;
+    public static boolean coordinates = true;
+    public static boolean fps = true;
+    public static boolean timeMod = true;
 
     public static double auraRange = 3.2;       // Легитная дистанция для честного RayTrace
     private static KeyBinding menuKey;
@@ -76,18 +82,15 @@ public class CoreInitializer implements ClientModInitializer {
             mc.player.setSprinting(true);
         }
 
-        // Модуль 3: Исправленный Motion-Fly (работает в выживании без прав креатива)
+        // Модуль 3: Motion-Fly
         if (flyMod) {
-            // Гасим гравитацию и вертикальную скорость по умолчанию
             double vY = 0.0;
             if (mc.options.jumpKey.isPressed()) {
-                vY = 0.42; // Подъем вверх по пробелу
+                vY = 0.42;
             } else if (mc.options.sneakKey.isPressed()) {
-                vY = -0.42; // Спуск вниз по шифту
+                vY = -0.42;
             }
             
-            // Управляем горизонтальной скоростью через стандартный ввод движения
-            Vec3d velocity = mc.player.getVelocity();
             double forward = mc.player.input.movementForward;
             double sideways = mc.player.input.movementSideways;
             float yaw = mc.player.getYaw();
@@ -95,7 +98,7 @@ public class CoreInitializer implements ClientModInitializer {
             if (forward != 0.0 || sideways != 0.0) {
                 double cos = Math.cos(Math.toRadians(yaw + 90.0f));
                 double sin = Math.sin(Math.toRadians(yaw + 90.0f));
-                double speed = 0.28; // Скорость полета
+                double speed = 0.28;
                 
                 double vX = (forward * speed * cos + sideways * speed * sin);
                 double vZ = (forward * speed * sin - sideways * speed * cos);
@@ -103,8 +106,6 @@ public class CoreInitializer implements ClientModInitializer {
             } else {
                 mc.player.setVelocity(0.0, vY, 0.0);
             }
-            
-            // Запрещаем игре сбрасывать вертикальную скорость падением
             mc.player.fallDistance = 0f;
         }
 
@@ -147,7 +148,8 @@ public class CoreInitializer implements ClientModInitializer {
                 
                 if (System.currentTimeMillis() - lastAttackTime >= delay && mc.player.getAttackCooldownProgress(0.5f) >= 0.85f) {
                     
-                    if (mc.player.isOnGround() && !mc.player.isSubmergedInWater() && !mc.player.isFallFlying()) {
+                    // Исправлена проверка полета на элитрах для 1.21.4 (isGliding)
+                    if (mc.player.isOnGround() && !mc.player.isSubmergedInWater() && !mc.player.isGliding()) {
                         mc.player.jump();
                     }
 
