@@ -1,4 +1,4 @@
-package com.client; // Твой пакет Oppka Client
+package com.client;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -25,13 +25,41 @@ import java.util.Comparator;
 import java.util.List;
 
 public class CoreInitializer implements ClientModInitializer {
-    
-    // Переключатели функций
-    public static boolean killAura = true;
-    public static boolean triggerBot = true;
-    public static boolean targetHud = true;
-    public static boolean noHurtCam = true;
+
+    // Состояния всех модулей с твоих скриншотов
+    // HUD
     public static boolean watermark = true;
+    public static boolean coordinates = true;
+    public static boolean fps = true;
+    public static boolean ping = true;
+    public static boolean cpsMod = true;
+    public static boolean speedMod = true;
+    public static boolean timeMod = true;
+    public static boolean totems = true;
+    public static boolean armor = true;
+    public static boolean effects = true;
+    public static boolean arrayList = true;
+
+    // Visuals
+    public static boolean nightVision = false;
+    public static boolean brightness = false;
+    public static boolean zoom = true;
+    public static boolean crosshair = false;
+    public static boolean noHurtCam = true;
+    public static boolean targetHud = true;
+
+    // Player
+    public static boolean autoSprint = false;
+    public static boolean autoRespawn = false;
+    public static boolean hitSound = false;
+
+    // Combat
+    public static boolean killAura = false;
+    public static boolean triggerBot = true;
+
+    // Client / Настройки
+    public static boolean interfaceMod = true;
+    public static boolean liteMode = false;
 
     public static double auraRange = 4.2;
     public static int auraCps = 12;
@@ -43,7 +71,6 @@ public class CoreInitializer implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        // Открытие меню на Правый Shift
         menuKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                 "key.oppka.menu", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_RIGHT_SHIFT, "category.oppka"
         ));
@@ -55,31 +82,29 @@ public class CoreInitializer implements ClientModInitializer {
     private void onTick(MinecraftClient mc) {
         if (mc.player == null || mc.world == null) return;
 
-        // Открытие меню
         while (menuKey.wasPressed()) {
             if (mc.currentScreen == null) {
                 mc.setScreen(new OppkaMenuScreen());
             }
         }
 
-        // CPS подсчет
+        // CPS
         long now = System.currentTimeMillis();
         boolean isAttacking = mc.options.attackKey.isPressed();
         if (isAttacking && !lastMouseState) clicks.add(now);
         lastMouseState = isAttacking;
         clicks.removeIf(t -> now - t > 1000);
 
-        // NoHurtCam (убираем тряску экрана при ударе)
+        // NoHurtCam
         if (noHurtCam && mc.player.hurtTime > 0) {
             mc.player.hurtTime = 0;
             mc.player.timeUntilRegen = 0;
         }
 
-        // Боевая логика: Киллаура и Триггербот
+        // Боевая логика: KillAura и TriggerBot
         if (!mc.player.isSpectator()) {
             LivingEntity target = null;
 
-            // Триггербот
             if (triggerBot && mc.crosshairTarget != null && mc.crosshairTarget.getType() == HitResult.Type.ENTITY) {
                 EntityHitResult hit = (EntityHitResult) mc.crosshairTarget;
                 if (hit.getEntity() instanceof LivingEntity living && living != mc.player && !living.isDead() && living.getHealth() > 0) {
@@ -87,7 +112,6 @@ public class CoreInitializer implements ClientModInitializer {
                 }
             }
 
-            // Киллаура
             if (target == null && killAura) {
                 List<LivingEntity> targets = new ArrayList<>();
                 for (Entity e : mc.world.getEntities()) {
@@ -99,14 +123,12 @@ public class CoreInitializer implements ClientModInitializer {
                 if (!targets.isEmpty()) {
                     targets.sort(Comparator.comparingDouble(e -> mc.player.distanceTo(e)));
                     target = targets.get(0);
-
                     float[] rot = getRotations(mc, target);
                     mc.player.setYaw(rot[0]);
                     mc.player.setPitch(rot[1]);
                 }
             }
 
-            // Удар по цели
             if (target != null) {
                 long delay = 1000L / Math.max(1, auraCps);
                 if (System.currentTimeMillis() - lastAttack >= delay) {
@@ -140,15 +162,21 @@ public class CoreInitializer implements ClientModInitializer {
         int sw = mc.getWindow().getScaledWidth();
         int sh = mc.getWindow().getScaledHeight();
 
-        // Ватермарка
+        // Ватермарка (если включена)
         if (watermark) {
-            String wm = "Oppka Client | " + mc.getCurrentFps() + " FPS";
+            String wm = "Oppka Client - v1.0.0 | " + mc.getCurrentFps() + " FPS";
             ctx.fill(4, 4, 4 + tr.getWidth(wm) + 16, 18, 0xAA101018);
             ctx.fill(4, 4, 6, 18, 0xFF00E5FF);
             ctx.drawTextWithShadow(tr, wm, 10, 7, 0xFFFFFF);
         }
 
-        // TargetHUD (плашка здоровья цели как в Пирожке)
+        // Координаты (если включены)
+        if (coordinates) {
+            String coords = String.format("XYZ: %.1f, %.1f, %.1f", mc.player.getX(), mc.player.getY(), mc.player.getZ());
+            ctx.drawTextWithShadow(tr, coords, 4, 24, 0xFFFFFFFF);
+        }
+
+        // TargetHUD (плашка здоровья цели под прицелом)
         if (targetHud && mc.crosshairTarget != null && mc.crosshairTarget.getType() == HitResult.Type.ENTITY) {
             EntityHitResult hit = (EntityHitResult) mc.crosshairTarget;
             if (hit.getEntity() instanceof LivingEntity target && target != mc.player) {
@@ -161,8 +189,10 @@ public class CoreInitializer implements ClientModInitializer {
         }
     }
 
-    // Менюшка клиента
+    // Главное меню Oppka Client с переключением вкладок как на скриншотах
     public static class OppkaMenuScreen extends Screen {
+        private String currentTab = "HUD";
+
         public OppkaMenuScreen() {
             super(Text.literal("Oppka Client Menu"));
         }
@@ -172,41 +202,83 @@ public class CoreInitializer implements ClientModInitializer {
             int cx = this.width / 2;
             int cy = this.height / 4;
 
-            this.addDrawableChild(ButtonWidget.builder(
-                    Text.literal("KillAura: " + (killAura ? "§aON" : "§cOFF")), b -> {
-                        killAura = !killAura;
-                        b.setMessage(Text.literal("KillAura: " + (killAura ? "§aON" : "§cOFF")));
-                    }).dimensions(cx - 100, cy - 30, 200, 20).build());
+            // Кнопки категорий сверху (HUD, Visuals, Player, Combat, Client)
+            String[] tabs = {"HUD", "Visuals", "Player", "Combat", "Client"};
+            int startX = cx - 125;
+            for (int i = 0; i < tabs.length; i++) {
+                final String tab = tabs[i];
+                this.addDrawableChild(ButtonWidget.builder(
+                        Text.literal(tab), b -> { currentTab = tab; this.clearAndInit(); }
+                ).dimensions(startX + (i * 52), cy - 35, 50, 18).build());
+            }
 
-            this.addDrawableChild(ButtonWidget.builder(
-                    Text.literal("TriggerBot: " + (triggerBot ? "§aON" : "§cOFF")), b -> {
-                        triggerBot = !triggerBot;
-                        b.setMessage(Text.literal("TriggerBot: " + (triggerBot ? "§aON" : "§cOFF")));
-                    }).dimensions(cx - 100, cy - 5, 200, 20).build());
+            // Динамический вывод кнопок в зависимости от выбранной вкладки
+            int yOff = cy - 5;
 
-            this.addDrawableChild(ButtonWidget.builder(
-                    Text.literal("TargetHUD: " + (targetHud ? "§aON" : "§cOFF")), b -> {
-                        targetHud = !targetHud;
-                        b.setMessage(Text.literal("TargetHUD: " + (targetHud ? "§aON" : "§cOFF")));
-                    }).dimensions(cx - 100, cy + 20, 200, 20).build());
+            if (currentTab.equals("HUD")) {
+                addToggle("Watermark", watermark, b -> watermark = !watermark);
+                addToggle("Coordinates", coordinates, b -> coordinates = !coordinates);
+                addToggle("FPS", fps, b -> fps = !fps);
+                addToggle("Ping", ping, b -> ping = !ping);
+                addToggle("CPS", cpsMod, b -> cpsMod = !cpsMod);
+                addToggle("Speed", speedMod, b -> speedMod = !speedMod);
+                addToggle("Time", timeMod, b -> timeMod = !timeMod);
+                addToggle("Totems", totems, b -> totems = !totems);
+                addToggle("Armor", armor, b -> armor = !armor);
+                addToggle("Effects", effects, b -> effects = !effects);
+                addToggle("ArrayList", arrayList, b -> arrayList = !arrayList);
+            } else if (currentTab.equals("Visuals")) {
+                addToggle("Night Vision", nightVision, b -> nightVision = !nightVision);
+                addToggle("Brightness", brightness, b -> brightness = !brightness);
+                addToggle("Zoom", zoom, b -> zoom = !zoom);
+                addToggle("Crosshair", crosshair, b -> crosshair = !crosshair);
+                addToggle("NoHurtCam", noHurtCam, b -> noHurtCam = !noHurtCam);
+                addToggle("TargetHUD", targetHud, b -> targetHud = !targetHud);
+            } else if (currentTab.equals("Player")) {
+                addToggle("Auto Sprint", autoSprint, b -> autoSprint = !autoSprint);
+                addToggle("Auto Respawn", autoRespawn, b -> autoRespawn = !autoRespawn);
+                addToggle("Hit Sound", hitSound, b -> hitSound = !hitSound);
+            } else if (currentTab.equals("Combat")) {
+                addToggle("KillAura", killAura, b -> killAura = !killAura);
+                addToggle("TriggerBot", triggerBot, b -> triggerBot = !triggerBot);
+            } else if (currentTab.equals("Client")) {
+                addToggle("Interface", interfaceMod, b -> interfaceMod = !interfaceMod);
+                addToggle("Lite Mode", liteMode, b -> liteMode = !liteMode);
+            }
 
-            this.addDrawableChild(ButtonWidget.builder(
-                    Text.literal("NoHurtCam: " + (noHurtCam ? "§aON" : "§cOFF")), b -> {
-                        noHurtCam = !noHurtCam;
-                        b.setMessage(Text.literal("NoHurtCam: " + (noHurtCam ? "§aON" : "§cOFF")));
-                    }).dimensions(cx - 100, cy + 45, 200, 20).build());
-
+            // Кнопка закрытия
             this.addDrawableChild(ButtonWidget.builder(
                     Text.literal("Done"), b -> this.close()
-            ).dimensions(cx - 100, cy + 80, 200, 20).build());
+            ).dimensions(cx - 100, cy + 130, 200, 20).build());
+        }
+
+        private void addToggle(String name, boolean val, java.util.function.Consumer<ButtonWidget> action) {
+            int cx = this.width / 2;
+            int yPos = this.height / 4 - 5 + getTrackedY();
+            this.addDrawableChild(ButtonWidget.builder(
+                    Text.literal(name + ": " + (val ? "§aON" : "§cOFF")), b -> {
+                        action.accept(b);
+                        b.setMessage(Text.literal(name + ": " + (val ? "§cOFF" : "§aON"))); // Инвертируем для UI
+                        this.clearAndInit();
+                    }
+            ).dimensions(cx - 100, yPos, 200, 20).build());
+            incrementTrackedY();
+        }
+
+        private static int trackedY = 0;
+        private int getTrackedY() { return trackedY; }
+        private void incrementTrackedY() { trackedY += 24; }
+        @Override
+        public void clearAndInit() {
+            trackedY = 0;
+            super.clearAndInit();
         }
 
         @Override
         public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
             this.renderBackground(ctx, mouseX, mouseY, delta);
-            ctx.drawCenteredTextWithShadow(this.textRenderer, "§lOppka Client [Menu]", this.width / 2, this.height / 4 - 50, 0xFF00E5FF);
+            ctx.drawCenteredTextWithShadow(this.textRenderer, "§lOppka Client - v1.0.0", this.width / 2, this.height / 4 - 55, 0xFF00E5FF);
             super.render(ctx, mouseX, mouseY, delta);
         }
     }
-            }
-                                                   
+}
