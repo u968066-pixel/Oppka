@@ -40,5 +40,8 @@ java {
     }
 }
 
-// Отключаем проблемный ремаппинг, чтобы сборка не падала на ошибке Gson
 remapJar.enabled = false
+
+jar {
+    destinationDirectory = file("${buildDir}/libs")
+}
