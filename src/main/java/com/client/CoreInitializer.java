@@ -258,7 +258,7 @@ public class CoreInitializer implements ClientModInitializer {
             this.addDrawableChild(ButtonWidget.builder(
                     Text.literal(name + ": " + (val ? "§aON" : "§cOFF")), b -> {
                         action.accept(b);
-                        b.setMessage(Text.literal(name + ": " + (val ? "§cOFF" : "§aON"))); // Инвертируем для UI
+                        b.setMessage(Text.literal(name + ": " + (val ? "§cOFF" : "§aON")));
                         this.clearAndInit();
                     }
             ).dimensions(cx - 100, yPos, 200, 20).build());
@@ -281,4 +281,4 @@ public class CoreInitializer implements ClientModInitializer {
             super.render(ctx, mouseX, mouseY, delta);
         }
     }
-}
+    }
