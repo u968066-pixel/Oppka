@@ -76,7 +76,11 @@ public class CoreInitializer implements ClientModInitializer {
         ));
 
         ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
-        HudRenderCallback.EVENT.register(this::onRenderHud);
+        
+        // Исправленный HudRenderCallback для Fabric 1.21.4
+        HudRenderCallback.EVENT.register((drawContext, tickCounter) -> {
+            onRenderHud(drawContext, tickCounter);
+        });
     }
 
     private void onTick(MinecraftClient mc) {
@@ -155,7 +159,7 @@ public class CoreInitializer implements ClientModInitializer {
         };
     }
 
-    private void onRenderHud(DrawContext ctx, float tickDelta) {
+    private void onRenderHud(DrawContext ctx, net.minecraft.client.render.RenderTickCounter tickCounter) {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player == null || mc.options.hudHidden) return;
         TextRenderer tr = mc.textRenderer;
@@ -189,7 +193,7 @@ public class CoreInitializer implements ClientModInitializer {
         }
     }
 
-    // Главное меню Oppka Client с переключением вкладок как на скриншотах
+    // Главное меню Oppka Client с переключением вкладок
     public static class OppkaMenuScreen extends Screen {
         private String currentTab = "HUD";
 
@@ -202,7 +206,6 @@ public class CoreInitializer implements ClientModInitializer {
             int cx = this.width / 2;
             int cy = this.height / 4;
 
-            // Кнопки категорий сверху (HUD, Visuals, Player, Combat, Client)
             String[] tabs = {"HUD", "Visuals", "Player", "Combat", "Client"};
             int startX = cx - 125;
             for (int i = 0; i < tabs.length; i++) {
@@ -211,9 +214,6 @@ public class CoreInitializer implements ClientModInitializer {
                         Text.literal(tab), b -> { currentTab = tab; this.clearAndInit(); }
                 ).dimensions(startX + (i * 52), cy - 35, 50, 18).build());
             }
-
-            // Динамический вывод кнопок в зависимости от выбранной вкладки
-            int yOff = cy - 5;
 
             if (currentTab.equals("HUD")) {
                 addToggle("Watermark", watermark, b -> watermark = !watermark);
@@ -246,7 +246,6 @@ public class CoreInitializer implements ClientModInitializer {
                 addToggle("Lite Mode", liteMode, b -> liteMode = !liteMode);
             }
 
-            // Кнопка закрытия
             this.addDrawableChild(ButtonWidget.builder(
                     Text.literal("Done"), b -> this.close()
             ).dimensions(cx - 100, cy + 130, 200, 20).build());
@@ -281,4 +280,5 @@ public class CoreInitializer implements ClientModInitializer {
             super.render(ctx, mouseX, mouseY, delta);
         }
     }
-    }
+        }
+                
