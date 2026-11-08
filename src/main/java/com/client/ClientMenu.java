@@ -19,6 +19,20 @@ public class ClientMenu extends Screen {
     public static int currentTheme = 0;
     public static boolean hudEnabled = true;
 
+    // --- Элементы HUD, которые ожидает HudManager ---
+    public static final HudElement WATERMARK = new HudElement(true);
+    public static final HudElement COORDS = new HudElement(true);
+    public static final HudElement FPS = new HudElement(true);
+    public static final HudElement CPS = new HudElement(true);
+    public static final HudElement TIME = new HudElement(true);
+
+    public static class HudElement {
+        public boolean enabled;
+        public HudElement(boolean enabled) {
+            this.enabled = enabled;
+        }
+    }
+
     public ClientMenu() {
         super(Text.literal("Oppka Client Menu"));
     }
@@ -62,7 +76,7 @@ public class ClientMenu extends Screen {
         super.render(context, mouseX, mouseY, delta);
     }
 
-    // --- Обязательные методы для HudManager ---
+    // --- Методы для HudManager ---
 
     public static String key(String raw) {
         if (raw == null) return "unknown";
