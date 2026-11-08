@@ -27,6 +27,7 @@ public class CoreInitializer implements ClientModInitializer {
                 while (menuKeyBinding.wasPressed()) {
                     client.setScreen(new ClientMenu());
                 }
+                // Работа боевой части (Килка + Триггер)
                 Aura.onTick();
             }
         });
