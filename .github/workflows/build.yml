@@ -27,16 +27,10 @@ jobs:
       - name: Compile Mod Jar
         run: gradle build
 
-      - name: Check Output Files
-        run: find build -name "*.jar"
-
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: internal-client-jar
           if-no-files-found: error
-          path: |
-            build/libs/*.jar
-            build/devlibs/*.jar
-            !**/*-sources.jar
-            
+          path: build/libs/*.jar
+          
