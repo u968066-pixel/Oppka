@@ -56,12 +56,10 @@ public class CoreInitializer implements ClientModInitializer {
     public static boolean interfaceMod = true;
     public static boolean liteMode = false;
 
-    public static double auraRange = 4.0; // Безопасная дистанция для обхода (4.0 - 4.1)
+    public static double auraRange = 3.9; // Безопасный радиус под жесткие античиты
 
     private static KeyBinding menuKey;
-    private static final List<Long> clicks = new ArrayList<>();
-    private static boolean lastMouseState = false;
-    
+    private static long lastAttackTime = 0;
     private static LivingEntity lockedTarget = null;
     private static final Random random = new Random();
 
@@ -87,18 +85,12 @@ public class CoreInitializer implements ClientModInitializer {
             }
         }
 
-        long now = System.currentTimeMillis();
-        boolean isAttacking = mc.options.attackKey.isPressed();
-        if (isAttacking && !lastMouseState) clicks.add(now);
-        lastMouseState = isAttacking;
-        clicks.removeIf(t -> now - t > 1000);
-
         if (noHurtCam && mc.player.hurtTime > 0) {
             mc.player.hurtTime = 0;
             mc.player.timeUntilRegen = 0;
         }
 
-        // Продвинутая боевая логика с обходом античитов (ReallyWorld / Sworld / BPVP)
+        // Обходящий античит BWorld (bpvp.su) модуль KillAura / TriggerBot
         if (!mc.player.isSpectator()) {
             LivingEntity target = null;
 
@@ -136,29 +128,30 @@ public class CoreInitializer implements ClientModInitializer {
                 if (target != null) {
                     float[] targetRot = getRotations(mc, target);
                     
-                    // Обход античита на резкие повороты (плавное доведение камеры)
-                    float yawSpeed = 45.0f;   // Максимальный градус поворота по Yaw за тик
-                    float pitchSpeed = 30.0f; // Максимальный градус поворота по Pitch за тик
+                    // Эмуляция человеческой руки: плавное сглаживание углов (Angle/Aimbot check bypass)
+                    float yawSpeed = 30.0f + random.nextFloat() * 15.0f;   // Рандомизированная скорость
+                    float pitchSpeed = 20.0f + random.nextFloat() * 10.0f; 
                     
                     float diffYaw = MathHelper.wrapDegrees(targetRot[0] - mc.player.getYaw());
                     float diffPitch = targetRot[1] - mc.player.getPitch();
                     
-                    float newYaw = mc.player.getYaw() + MathHelper.clamp(diffYaw, -yawSpeed, yawSpeed);
-                    float newPitch = mc.player.getPitch() + MathHelper.clamp(diffPitch, -pitchSpeed, pitchSpeed);
-                    
-                    mc.player.setYaw(newYaw);
-                    mc.player.setPitch(newPitch);
+                    mc.player.setYaw(mc.player.getYaw() + MathHelper.clamp(diffYaw, -yawSpeed, yawSpeed));
+                    mc.player.setPitch(mc.player.getPitch() + MathHelper.clamp(diffPitch, -pitchSpeed, pitchSpeed));
                 }
             } else if (!killAura) {
                 lockedTarget = null;
             }
 
             if (target != null) {
-                // Строгое соблюдение ванильного кулдауна + рандомизированная задержка (легитный удар)
-                if (mc.player.getAttackCooldownProgress(0.5f) >= 0.85f) {
-                    if (mc.interactionManager != null) {
-                        mc.interactionManager.attackEntity(mc.player, target);
-                        mc.player.swingHand(Hand.MAIN_HAND);
+                // Легитный кулдаун + рандомная задержка миллисекунд, чтобы обойти детекты FastAttack
+                long delay = 550 + random.nextInt(120); // ~550-670мс между ударами
+                if (System.currentTimeMillis() - lastAttackTime >= delay) {
+                    if (mc.player.getAttackCooldownProgress(0.5f) >= 0.85f) {
+                        if (mc.interactionManager != null) {
+                            mc.interactionManager.attackEntity(mc.player, target);
+                            mc.player.swingHand(Hand.MAIN_HAND);
+                            lastAttackTime = System.currentTimeMillis();
+                        }
                     }
                 }
             }
@@ -166,10 +159,10 @@ public class CoreInitializer implements ClientModInitializer {
     }
 
     private float[] getRotations(MinecraftClient mc, Entity entity) {
-        // Добавляем рандомное смещение к хитбоксу (чтобы античит не палил идеальный центр)
-        double offsetX = (random.nextDouble() - 0.5) * 0.2;
-        double offsetY = random.nextDouble() * entity.getHeight() * 0.7;
-        double offsetZ = (random.nextDouble() - 0.5) * 0.2;
+        // Рандомизация точки хитбокса (чтобы пакеты летели в разные части тела, а не в один пиксель)
+        double offsetX = (random.nextDouble() - 0.5) * 0.3;
+        double offsetY = random.nextDouble() * entity.getHeight() * 0.8;
+        double offsetZ = (random.nextDouble() - 0.5) * 0.3;
 
         double x = (entity.getX() + offsetX) - mc.player.getX();
         double y = (entity.getY() + offsetY) - (mc.player.getY() + mc.player.getEyeHeight(mc.player.getPose()));
