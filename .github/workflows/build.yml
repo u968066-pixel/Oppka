@@ -27,9 +27,11 @@ jobs:
       - name: Compile Mod Jar
         run: gradle build
 
-      - name: Upload Ready Jar
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: internal-client-artifact
-          path: build/libs/*.jar
-          
+          name: internal-client-jar
+          path: |
+            build/libs/*.jar
+            !build/libs/*-sources.jar
+            
