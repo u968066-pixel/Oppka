@@ -39,9 +39,3 @@ java {
         languageVersion = JavaLanguageVersion.of(21)
     }
 }
-
-remapJar.enabled = false
-
-jar {
-    destinationDirectory = file("${buildDir}/libs")
-}
