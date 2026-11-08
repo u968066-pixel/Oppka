@@ -26,8 +26,7 @@ import java.util.List;
 
 public class CoreInitializer implements ClientModInitializer {
 
-    // Состояния всех модулей с твоих скриншотов
-    // HUD
+    // Состояния всех модулей
     public static boolean watermark = true;
     public static boolean coordinates = true;
     public static boolean fps = true;
@@ -40,7 +39,6 @@ public class CoreInitializer implements ClientModInitializer {
     public static boolean effects = true;
     public static boolean arrayList = true;
 
-    // Visuals
     public static boolean nightVision = false;
     public static boolean brightness = false;
     public static boolean zoom = true;
@@ -48,21 +46,18 @@ public class CoreInitializer implements ClientModInitializer {
     public static boolean noHurtCam = true;
     public static boolean targetHud = true;
 
-    // Player
     public static boolean autoSprint = false;
     public static boolean autoRespawn = false;
     public static boolean hitSound = false;
 
-    // Combat
     public static boolean killAura = false;
     public static boolean triggerBot = true;
+    public static boolean autoJump = true;
 
-    // Client / Настройки
     public static boolean interfaceMod = true;
     public static boolean liteMode = false;
 
     public static double auraRange = 4.2;
-    public static int auraCps = 12;
 
     private static KeyBinding menuKey;
     private static long lastAttack = 0;
@@ -77,7 +72,6 @@ public class CoreInitializer implements ClientModInitializer {
 
         ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
         
-        // Исправленный HudRenderCallback для Fabric 1.21.4
         HudRenderCallback.EVENT.register((drawContext, tickCounter) -> {
             onRenderHud(drawContext, tickCounter);
         });
@@ -92,20 +86,18 @@ public class CoreInitializer implements ClientModInitializer {
             }
         }
 
-        // CPS
         long now = System.currentTimeMillis();
         boolean isAttacking = mc.options.attackKey.isPressed();
         if (isAttacking && !lastMouseState) clicks.add(now);
         lastMouseState = isAttacking;
         clicks.removeIf(t -> now - t > 1000);
 
-        // NoHurtCam
         if (noHurtCam && mc.player.hurtTime > 0) {
             mc.player.hurtTime = 0;
             mc.player.timeUntilRegen = 0;
         }
 
-        // Боевая логика: KillAura и TriggerBot
+        // Боевая логика с обходом по кулдауну (1.9+ Attack Cooldown)
         if (!mc.player.isSpectator()) {
             LivingEntity target = null;
 
@@ -128,19 +120,23 @@ public class CoreInitializer implements ClientModInitializer {
                     targets.sort(Comparator.comparingDouble(e -> mc.player.distanceTo(e)));
                     target = targets.get(0);
                     float[] rot = getRotations(mc, target);
-                    mc.player.setYaw(rot[0]);
-                    mc.player.setPitch(rot[1]);
+                    // Плавный доворот (обход простых античитов на резкие сновы камер)
+                    mc.player.setYaw(mc.player.getYaw() + (rot[0] - mc.player.getYaw()) * 0.7f);
+                    mc.player.setPitch(mc.player.getPitch() + (rot[1] - mc.player.getPitch()) * 0.7f);
                 }
             }
 
             if (target != null) {
-                long delay = 1000L / Math.max(1, auraCps);
-                if (System.currentTimeMillis() - lastAttack >= delay) {
+                if (autoJump && mc.player.isOnGround()) {
+                    mc.player.jump();
+                }
+
+                // Удар строго по кулдауну ванильного оружия (проверка шкалы атаки >= 0.9 для легитности)
+                if (mc.player.getAttackCooldown_Progress(0.5f) >= 0.9f) {
                     if (mc.interactionManager != null) {
                         mc.interactionManager.attackEntity(mc.player, target);
                         mc.player.swingHand(Hand.MAIN_HAND);
                     }
-                    lastAttack = System.currentTimeMillis();
                 }
             }
         }
@@ -166,7 +162,6 @@ public class CoreInitializer implements ClientModInitializer {
         int sw = mc.getWindow().getScaledWidth();
         int sh = mc.getWindow().getScaledHeight();
 
-        // Ватермарка (если включена)
         if (watermark) {
             String wm = "Oppka Client - v1.0.0 | " + mc.getCurrentFps() + " FPS";
             ctx.fill(4, 4, 4 + tr.getWidth(wm) + 16, 18, 0xAA101018);
@@ -174,13 +169,11 @@ public class CoreInitializer implements ClientModInitializer {
             ctx.drawTextWithShadow(tr, wm, 10, 7, 0xFFFFFF);
         }
 
-        // Координаты (если включены)
         if (coordinates) {
             String coords = String.format("XYZ: %.1f, %.1f, %.1f", mc.player.getX(), mc.player.getY(), mc.player.getZ());
             ctx.drawTextWithShadow(tr, coords, 4, 24, 0xFFFFFFFF);
         }
 
-        // TargetHUD (плашка здоровья цели под прицелом)
         if (targetHud && mc.crosshairTarget != null && mc.crosshairTarget.getType() == HitResult.Type.ENTITY) {
             EntityHitResult hit = (EntityHitResult) mc.crosshairTarget;
             if (hit.getEntity() instanceof LivingEntity target && target != mc.player) {
@@ -193,7 +186,6 @@ public class CoreInitializer implements ClientModInitializer {
         }
     }
 
-    // Главное меню Oppka Client с переключением вкладок
     public static class OppkaMenuScreen extends Screen {
         private String currentTab = "HUD";
 
@@ -221,7 +213,7 @@ public class CoreInitializer implements ClientModInitializer {
                 addToggle("FPS", fps, b -> fps = !fps);
                 addToggle("Ping", ping, b -> ping = !ping);
                 addToggle("CPS", cpsMod, b -> cpsMod = !cpsMod);
-                addToggle("Speed", speedMod, b -> speedMod = !speedMod);
+                addToggle("Speed", speedMod, b -> speedMod = !speedMod); бля
                 addToggle("Time", timeMod, b -> timeMod = !timeMod);
                 addToggle("Totems", totems, b -> totems = !totems);
                 addToggle("Armor", armor, b -> armor = !armor);
@@ -237,10 +229,11 @@ public class CoreInitializer implements ClientModInitializer {
             } else if (currentTab.equals("Player")) {
                 addToggle("Auto Sprint", autoSprint, b -> autoSprint = !autoSprint);
                 addToggle("Auto Respawn", autoRespawn, b -> autoRespawn = !autoRespawn);
-                addToggle("Hit Sound", hitSound, b -> hitSound = !hitSound);
+                addToggle("HitSound", hitSound, b -> hitSound = !hitSound);
             } else if (currentTab.equals("Combat")) {
                 addToggle("KillAura", killAura, b -> killAura = !killAura);
                 addToggle("TriggerBot", triggerBot, b -> triggerBot = !triggerBot);
+                addToggle("AutoJump", autoJump, b -> autoJump = !autoJump);
             } else if (currentTab.equals("Client")) {
                 addToggle("Interface", interfaceMod, b -> interfaceMod = !interfaceMod);
                 addToggle("Lite Mode", liteMode, b -> liteMode = !liteMode);
@@ -268,6 +261,8 @@ public class CoreInitializer implements ClientModInitializer {
         private int getTrackedY() { return trackedY; }
         private void incrementTrackedY() { trackedY += 24; }
         @Override
+        public void clearAndInst() {} // за заглушку сойдет
+        @Override
         public void clearAndInit() {
             trackedY = 0;
             super.clearAndInit();
@@ -280,5 +275,4 @@ public class CoreInitializer implements ClientModInitializer {
             super.render(ctx, mouseX, mouseY, delta);
         }
     }
-        }
-                
+}
