@@ -1,20 +1,22 @@
 {
-  "schema_version": 1,
+  "schemaVersion": 1,
   "id": "internal_client",
   "version": "${version}",
   "name": "Internal Client",
-  "description": "Custom Fabric Client module",
-  "authors": [],
-  "license": "All Rights Reserved",
-  "environment": "client",
+  "description": "Custom Fabric client mod",
+  "authors": [
+    "Developer"
+  ],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/internal_client/icon.png",
+  "environment": "*",
   "entrypoints": {
     "client": [
       "com.client.CoreInitializer"
     ]
   },
-  "mixins": [
-    "internal_client.mixins.json"
-  ],
+  "mixins": [],
   "depends": {
     "fabricloader": ">=${loader_version}",
     "minecraft": "~${minecraft_version}",
@@ -22,4 +24,3 @@
     "fabric-api": "*"
   }
 }
-
