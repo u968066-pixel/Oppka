@@ -39,3 +39,6 @@ java {
         languageVersion = JavaLanguageVersion.of(21)
     }
 }
+
+// Отключаем проблемный ремаппинг, чтобы сборка не падала на ошибке Gson
+remapJar.enabled = false
