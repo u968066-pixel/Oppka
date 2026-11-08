@@ -7,15 +7,13 @@ import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.util.Hand;
 import net.minecraft.util.math.MathHelper;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.stream.Collectors;
 
 public class Aura {
     private static final MinecraftClient mc = MinecraftClient.getInstance();
 
-    // --- Настройки модуля ---
-    // Установили true, чтобы модуль сразу работал при входе в мир
     public static boolean toggled = true;
     public static double range = 4.2;
     public static float fov = 360.0f;
@@ -52,24 +50,28 @@ public class Aura {
     }
 
     private static LivingEntity selectTarget() {
-        List<LivingEntity> validTargets = mc.world.getEntities().stream()
-                .filter(e -> e instanceof LivingEntity)
-                .map(e -> (LivingEntity) e)
-                .filter(e -> e != mc.player)
-                .filter(e -> !e.isDead() && e.getHealth() > 0)
-                .filter(e -> {
-                    if (e instanceof PlayerEntity && !targetPlayers) return false;
-                    if (!(e instanceof PlayerEntity) && !targetMobs) return false;
-                    double dist = mc.player.distanceTo(e);
-                    if (dist > range) return false;
-                    if (!checkFov(e, fov)) return false;
-                    if (rayTrace && !mc.player.canSee(e)) return false;
-                    return true;
-                })
-                .sorted(Comparator.comparingDouble(e -> mc.player.distanceTo(e)))
-                .collect(Collectors.toList());
+        List<LivingEntity> validTargets = new ArrayList<>();
+
+        for (Entity e : mc.world.getEntities()) {
+            if (!(e instanceof LivingEntity)) continue;
+            LivingEntity living = (LivingEntity) e;
+
+            if (living == mc.player) continue;
+            if (living.isDead() || living.getHealth() <= 0) continue;
+            if (living instanceof PlayerEntity && !targetPlayers) continue;
+            if (!(living instanceof PlayerEntity) && !targetMobs) continue;
+
+            double dist = mc.player.distanceTo(living);
+            if (dist > range) continue;
+            if (!checkFov(living, fov)) continue;
+            if (rayTrace && !mc.player.canSee(living)) continue;
+
+            validTargets.add(living);
+        }
 
         if (validTargets.isEmpty()) return null;
+
+        validTargets.sort(Comparator.comparingDouble(e -> mc.player.distanceTo(e)));
 
         if (attackMode.equalsIgnoreCase("Single") && currentTarget != null && validTargets.contains(currentTarget)) {
             return currentTarget;
@@ -102,7 +104,7 @@ public class Aura {
 
         float step = rotationSpeed * 0.2f;
 
-        mc.player.setYaw(currentYaw + Math.clamp(yawDiff, -step, step));
+        mc.player.setYaw(currentYaw + MathHelper.clamp(yawDiff, -step, step));
         mc.player.setPitch(currentPitch + Math.clamp(pitchDiff, -step, step));
     }
 
