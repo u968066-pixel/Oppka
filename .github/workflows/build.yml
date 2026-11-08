@@ -30,6 +30,6 @@ jobs:
       - name: Upload Ready Jar
         uses: actions/upload-artifact@v4
         with:
-          name: internal-client-1.21.4
-          path: build/libs/internal-client-1.0.0.jar
+          name: internal-client-artifact
+          path: build/libs/*.jar
           
