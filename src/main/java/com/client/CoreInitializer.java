@@ -13,11 +13,15 @@ import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.projectile.ProjectileUtil;
+import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
 import net.minecraft.text.Text;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.EntityHitResult;
 import net.minecraft.util.hit.HitResult;
+import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.math.Vec3d;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
@@ -27,274 +31,231 @@ import java.util.Random;
 
 public class CoreInitializer implements ClientModInitializer {
 
-    public static boolean watermark = true;
-    public static boolean coordinates = true;
-    public static boolean fps = true;
-    public static boolean ping = true;
-    public static boolean cpsMod = true;
-    public static boolean speedMod = true;
-    public static boolean timeMod = true;
-    public static boolean totems = true;
-    public static boolean armor = true;
-    public static boolean effects = true;
-    public static boolean arrayList = true;
+    // --- 5 модулей в одном монолитном файле ---
+    public static boolean killAura = false;     // Модуль 1 (+30 баллов, с AutoCrit и RayTrace)
+    public static boolean triggerBot = false;   // Модуль 2 (+10 баллов)
+    public static boolean flyMod = false;       // Модуль 3 (+15 баллов)
+    public static boolean autoSprint = true;    // Модуль 4 (Авто-спринт)
+    public static boolean noHurtCam = true;     // Модуль 5 (Анти-тряска при получении урона)
+    public static boolean silentMode = true;    // Пакетные тихие ротации без рывков камеры
 
-    public static boolean nightVision = false;
-    public static boolean brightness = false;
-    public static boolean zoom = true;
-    public static boolean crosshair = false;
-    public static boolean noHurtCam = true;
-    public static boolean targetHud = true;
-
-    public static boolean autoSprint = false;
-    public static boolean autoRespawn = false;
-    public static boolean hitSound = false;
-
-    public static boolean killAura = false;
-    public static boolean triggerBot = true;
-
-    public static boolean interfaceMod = true;
-    public static boolean liteMode = false;
-
-    public static double auraRange = 3.9; // Безопасный радиус под жесткие античиты
-
+    public static double auraRange = 3.2;       // Легитная дистанция для честного RayTrace
     private static KeyBinding menuKey;
     private static long lastAttackTime = 0;
-    private static LivingEntity lockedTarget = null;
+    private static float lastServerYaw = 0f;
+    private static float lastServerPitch = 0f;
     private static final Random random = new Random();
 
     @Override
     public void onInitializeClient() {
+        // Регистрируем клавишу открытия меню (Правый Shift)
         menuKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                 "key.oppka.menu", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_RIGHT_SHIFT, "category.oppka"
         ));
 
         ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
-        
-        HudRenderCallback.EVENT.register((drawContext, tickCounter) -> {
-            onRenderHud(drawContext, tickCounter);
-        });
+        HudRenderCallback.EVENT.register(this::onRenderHud);
     }
 
     private void onTick(MinecraftClient mc) {
         if (mc.player == null || mc.world == null) return;
 
+        // Открытие GUI по нажатию клавиши
         while (menuKey.wasPressed()) {
             if (mc.currentScreen == null) {
                 mc.setScreen(new OppkaMenuScreen());
             }
         }
 
+        // Модуль 5: Убираем тряску экрана при уроне
         if (noHurtCam && mc.player.hurtTime > 0) {
             mc.player.hurtTime = 0;
             mc.player.timeUntilRegen = 0;
         }
 
-        // Обходящий античит BWorld (bpvp.su) модуль KillAura / TriggerBot
-        if (!mc.player.isSpectator()) {
-            LivingEntity target = null;
+        // Модуль 4: Авто-спринт
+        if (autoSprint && !mc.player.isSneaking() && !mc.player.horizontalCollision && mc.player.input.movementForward > 0f) {
+            mc.player.setSprinting(true);
+        }
 
-            if (triggerBot && mc.crosshairTarget != null && mc.crosshairTarget.getType() == HitResult.Type.ENTITY) {
-                EntityHitResult hit = (EntityHitResult) mc.crosshairTarget;
-                if (hit.getEntity() instanceof LivingEntity living && living != mc.player && !living.isDead() && living.getHealth() > 0) {
-                    target = living;
+        // Модуль 3: Fly
+        if (flyMod) {
+            mc.player.getAbilities().flying = true;
+            mc.player.getAbilities().setFlySpeed(0.05f);
+        } else if (!mc.player.isCreative() && !mc.player.isSpectator()) {
+            mc.player.getAbilities().flying = false;
+        }
+
+        if (mc.player.isSpectator()) return;
+
+        LivingEntity target = null;
+
+        // Модуль 2: TriggerBot (+10 баллов) — бьет только при твоем наведении на хитбокс
+        if (triggerBot && mc.crosshairTarget != null && mc.crosshairTarget.getType() == HitResult.Type.ENTITY) {
+            EntityHitResult hit = (EntityHitResult) mc.crosshairTarget;
+            if (hit.getEntity() instanceof LivingEntity living && isValidTarget(mc, living)) {
+                target = living;
+            }
+        }
+
+        // Модуль 1: KillAura (+30 баллов) — продвинутый поиск целей, если триггер не сработал
+        if (target == null && killAura) {
+            List<LivingEntity> targets = new ArrayList<>();
+            for (Entity e : mc.world.getEntities()) {
+                if (!(e instanceof LivingEntity living)) continue;
+                if (isValidTarget(mc, living)) {
+                    targets.add(living);
                 }
             }
 
-            if (target == null && killAura) {
-                if (lockedTarget != null) {
-                    if (lockedTarget.isDead() || lockedTarget.getHealth() <= 0 || mc.player.distanceTo(lockedTarget) > auraRange) {
-                        lockedTarget = null;
+            if (!targets.isEmpty()) {
+                // Сортируем по здоровью (добивание шотных в стиле Wurst/Meteor)
+                targets.sort(Comparator.comparingDouble(LivingEntity::getHealth));
+                target = targets.get(0);
+            }
+        }
+
+        // Логика атаки для Киллауры
+        if (target != null && killAura) {
+            float[] rotations = getGcdFixedRotations(mc, target);
+            float targetYaw = rotations[0];
+            float targetPitch = rotations[1];
+
+            // Проверка луча (RayTrace) перед нанесением удара
+            if (raycastHit(mc, target, targetYaw, targetPitch, auraRange)) {
+                long delay = 380 + random.nextInt(90); // Быстрый тайминг ударов с рандомом
+                
+                if (System.currentTimeMillis() - lastAttackTime >= delay && mc.player.getAttackCooldownProgress(0.5f) >= 0.85f) {
+                    
+                    // Авто-крит через микро-прыжок (если стоим на земле)
+                    if (mc.player.isOnGround() && !mc.player.isSubmergedInWater() && !mc.player.isFallFlying()) {
+                        mc.player.jump();
+                    }
+
+                    // Отправка тихого пакета поворота или визуальный поворот
+                    if (silentMode && mc.getNetworkHandler() != null) {
+                        mc.getNetworkHandler().sendPacket(new PlayerMoveC2SPacket.LookAndOnGround(
+                                targetYaw, targetPitch, mc.player.isOnGround(), mc.player.horizontalCollision
+                        ));
                     } else {
-                        target = lockedTarget;
+                        mc.player.setYaw(targetYaw);
+                        mc.player.setPitch(targetPitch);
                     }
-                }
 
-                if (target == null) {
-                    List<LivingEntity> targets = new ArrayList<>();
-                    for (Entity e : mc.world.getEntities()) {
-                        if (!(e instanceof LivingEntity living)) continue;
-                        if (living == mc.player || living.isDead() || living.getHealth() <= 0) continue;
-                        if (mc.player.distanceTo(living) > auraRange) continue;
-                        targets.add(living);
+                    // Сам удар
+                    if (mc.interactionManager != null) {
+                        mc.interactionManager.attackEntity(mc.player, target);
+                        mc.player.swingHand(Hand.MAIN_HAND);
+                        lastAttackTime = System.currentTimeMillis();
                     }
-                    if (!targets.isEmpty()) {
-                        targets.sort(Comparator.comparingDouble(e -> mc.player.distanceTo(e)));
-                        lockedTarget = targets.get(0);
-                        target = lockedTarget;
-                    }
-                }
 
-                if (target != null) {
-                    float[] targetRot = getRotations(mc, target);
-                    
-                    // Эмуляция человеческой руки: плавное сглаживание углов (Angle/Aimbot check bypass)
-                    float yawSpeed = 30.0f + random.nextFloat() * 15.0f;   // Рандомизированная скорость
-                    float pitchSpeed = 20.0f + random.nextFloat() * 10.0f; 
-                    
-                    float diffYaw = MathHelper.wrapDegrees(targetRot[0] - mc.player.getYaw());
-                    float diffPitch = targetRot[1] - mc.player.getPitch();
-                    
-                    mc.player.setYaw(mc.player.getYaw() + MathHelper.clamp(diffYaw, -yawSpeed, yawSpeed));
-                    mc.player.setPitch(mc.player.getPitch() + MathHelper.clamp(diffPitch, -pitchSpeed, pitchSpeed));
-                }
-            } else if (!killAura) {
-                lockedTarget = null;
-            }
-
-            if (target != null) {
-                // Легитный кулдаун + рандомная задержка миллисекунд, чтобы обойти детекты FastAttack
-                long delay = 550 + random.nextInt(120); // ~550-670мс между ударами
-                if (System.currentTimeMillis() - lastAttackTime >= delay) {
-                    if (mc.player.getAttackCooldownProgress(0.5f) >= 0.85f) {
-                        if (mc.interactionManager != null) {
-                            mc.interactionManager.attackEntity(mc.player, target);
-                            mc.player.swingHand(Hand.MAIN_HAND);
-                            lastAttackTime = System.currentTimeMillis();
-                        }
+                    // Возврат взгляда в исходное состояние при Silent-режиме
+                    if (silentMode && mc.getNetworkHandler() != null) {
+                        mc.getNetworkHandler().sendPacket(new PlayerMoveC2SPacket.LookAndOnGround(
+                                mc.player.getYaw(), mc.player.getPitch(), mc.player.isOnGround(), mc.player.horizontalCollision
+                        ));
                     }
                 }
             }
         }
     }
 
-    private float[] getRotations(MinecraftClient mc, Entity entity) {
-        // Рандомизация точки хитбокса (чтобы пакеты летели в разные части тела, а не в один пиксель)
-        double offsetX = (random.nextDouble() - 0.5) * 0.3;
-        double offsetY = random.nextDouble() * entity.getHeight() * 0.8;
-        double offsetZ = (random.nextDouble() - 0.5) * 0.3;
-
-        double x = (entity.getX() + offsetX) - mc.player.getX();
-        double y = (entity.getY() + offsetY) - (mc.player.getY() + mc.player.getEyeHeight(mc.player.getPose()));
-        double z = (entity.getZ() + offsetZ) - mc.player.getZ();
-        double dist = Math.sqrt(x * x + z * z);
-        
-        float yaw = (float) (Math.atan2(z, x) * (180.0 / Math.PI)) - 90.0f;
-        float pitch = (float) (-(Math.atan2(y, dist) * (180.0 / Math.PI)));
-        
-        return new float[]{
-            mc.player.getYaw() + MathHelper.wrapDegrees(yaw - mc.player.getYaw()),
-            MathHelper.clamp(pitch, -90.0f, 90.0f)
-        };
+    private boolean isValidTarget(MinecraftClient mc, LivingEntity entity) {
+        return entity != mc.player && !entity.isDead() && entity.getHealth() > 0 && 
+               !entity.isSpectator() && mc.player.distanceTo(entity) <= auraRange;
     }
 
+    // --- Математика GCD Fix (Привязка к сетке сенсы мыши) ---
+    private float[] getGcdFixedRotations(MinecraftClient mc, Entity entity) {
+        double offsetX = (random.nextDouble() - 0.5) * 0.2;
+        double offsetY = entity.getHeight() * (0.4 + random.nextDouble() * 0.35);
+        double offsetZ = (random.nextDouble() - 0.5) * 0.2;
+
+        Vec3d eyePos = mc.player.getEyePos();
+        double dx = (entity.getX() + offsetX) - eyePos.x;
+        double dy = (entity.getY() + offsetY) - eyePos.y;
+        double dz = (entity.getZ() + offsetZ) - eyePos.z;
+        double dist = Math.sqrt(dx * dx + dz * dz);
+
+        float rawYaw = (float) (Math.atan2(dz, dx) * (180.0 / Math.PI)) - 90.0f;
+        float rawPitch = (float) (-(Math.atan2(dy, dist) * (180.0 / Math.PI)));
+
+        double sens = mc.options.getMouseSensitivity().getValue() * 0.6 + 0.2;
+        double gcd = sens * sens * sens * 8.0 * 0.15;
+
+        float currentYaw = silentMode ? lastServerYaw : mc.player.getYaw();
+        float currentPitch = silentMode ? lastServerPitch : mc.player.getPitch();
+
+        float deltaYaw = MathHelper.wrapDegrees(rawYaw - currentYaw);
+        float deltaPitch = rawPitch - currentPitch;
+
+        float fixedYaw = currentYaw + (float) (Math.round(deltaYaw / gcd) * gcd);
+        float fixedPitch = MathHelper.clamp(currentPitch + (float) (Math.round(deltaPitch / gcd) * gcd), -90.0f, 90.0f);
+
+        lastServerYaw = fixedYaw;
+        lastServerPitch = fixedPitch;
+
+        return new float[]{fixedYaw, fixedPitch};
+    }
+
+    // --- Точный RayTrace хитбокса ---
+    private boolean raycastHit(MinecraftClient mc, Entity target, float yaw, float pitch, double reach) {
+        Vec3d eyePos = mc.player.getEyePos();
+        Vec3d lookVec = Vec3d.fromPolar(pitch, yaw);
+        Vec3d endPos = eyePos.add(lookVec.multiply(reach));
+        Box searchBox = mc.player.getBoundingBox().stretch(lookVec.multiply(reach)).expand(1.0);
+
+        EntityHitResult result = ProjectileUtil.raycast(
+                mc.player, eyePos, endPos, searchBox,
+                e -> e == target && !e.isSpectator() && e.canHit(),
+                reach * reach
+        );
+        return result != null && result.getEntity() == target;
+    }
+
+    // HUD Статус в левом верхнем углу
     private void onRenderHud(DrawContext ctx, net.minecraft.client.render.RenderTickCounter tickCounter) {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player == null || mc.options.hudHidden) return;
         TextRenderer tr = mc.textRenderer;
-        int sw = mc.getWindow().getScaledWidth();
-        int sh = mc.getWindow().getScaledHeight();
-
-        if (watermark) {
-            String wm = "Oppka Client - v1.0.0 | " + mc.getCurrentFps() + " FPS";
-            ctx.fill(4, 4, 4 + tr.getWidth(wm) + 16, 18, 0xAA101018);
-            ctx.fill(4, 4, 6, 18, 0xFF00E5FF);
-            ctx.drawTextWithShadow(tr, wm, 10, 7, 0xFFFFFF);
-        }
-
-        if (coordinates) {
-            String coords = String.format("XYZ: %.1f, %.1f, %.1f", mc.player.getX(), mc.player.getY(), mc.player.getZ());
-            ctx.drawTextWithShadow(tr, coords, 4, 24, 0xFFFFFFFF);
-        }
-
-        if (targetHud && mc.crosshairTarget != null && mc.crosshairTarget.getType() == HitResult.Type.ENTITY) {
-            EntityHitResult hit = (EntityHitResult) mc.crosshairTarget;
-            if (hit.getEntity() instanceof LivingEntity target && target != mc.player) {
-                int tx = sw / 2 + 15;
-                int ty = sh / 2 - 10;
-                ctx.fill(tx - 2, ty - 2, tx + 120, ty + 30, 0x90101018);
-                ctx.drawTextWithShadow(tr, target.getName().getString(), tx + 4, ty + 4, 0xFFFF55);
-                ctx.drawTextWithShadow(tr, "HP: " + (int)target.getHealth() + " / " + (int)target.getMaxHealth(), tx + 4, ty + 16, 0xFF5555);
-            }
-        }
+        String status = "Oppka 5-in-1 | KA: " + (killAura ? "ON" : "OFF") +
+                        " | TB: " + (triggerBot ? "ON" : "OFF") +
+                        " | Fly: " + (flyMod ? "ON" : "OFF") +
+                        " | Sprint: " + (autoSprint ? "ON" : "OFF");
+        ctx.drawTextWithShadow(tr, status, 4, 4, 0x00FF99);
     }
 
+    // GUI Меню на Правый Shift
     public static class OppkaMenuScreen extends Screen {
-        private String currentTab = "HUD";
-
-        public OppkaMenuScreen() {
-            super(Text.literal("Oppka Client Menu"));
-        }
+        public OppkaMenuScreen() { super(Text.literal("Oppka 5-in-1 Menu")); }
 
         @Override
         protected void init() {
             int cx = this.width / 2;
-            int cy = this.height / 4;
+            int cy = this.height / 4 - 20;
 
-            String[] tabs = {"HUD", "Visuals", "Player", "Combat", "Client"};
-            int startX = cx - 125;
-            for (int i = 0; i < tabs.length; i++) {
-                final String tab = tabs[i];
-                this.addDrawableChild(ButtonWidget.builder(
-                        Text.literal(tab), b -> { currentTab = tab; this.clearAndInit(); }
-                ).dimensions(startX + (i * 52), cy - 35, 50, 18).build());
-            }
-
-            if (currentTab.equals("HUD")) {
-                addToggle("Watermark", watermark, b -> watermark = !watermark);
-                addToggle("Coordinates", coordinates, b -> coordinates = !coordinates);
-                addToggle("FPS", fps, b -> fps = !fps);
-                addToggle("Ping", ping, b -> ping = !ping);
-                addToggle("CPS", cpsMod, b -> cpsMod = !cpsMod);
-                addToggle("Speed", speedMod, b -> speedMod = !speedMod);
-                addToggle("Time", timeMod, b -> timeMod = !timeMod);
-                addToggle("Totems", totems, b -> totems = !totems);
-                addToggle("Armor", armor, b -> armor = !armor);
-                addToggle("Effects", effects, b -> effects = !effects);
-                addToggle("ArrayList", arrayList, b -> arrayList = !arrayList);
-            } else if (currentTab.equals("Visuals")) {
-                addToggle("Night Vision", nightVision, b -> nightVision = !nightVision);
-                addToggle("Brightness", brightness, b -> brightness = !brightness);
-                addToggle("Zoom", zoom, b -> zoom = !zoom);
-                addToggle("Crosshair", crosshair, b -> crosshair = !crosshair);
-                addToggle("NoHurtCam", noHurtCam, b -> noHurtCam = !noHurtCam);
-                addToggle("TargetHUD", targetHud, b -> targetHud = !targetHud);
-            } else if (currentTab.equals("Player")) {
-                addToggle("Auto Sprint", autoSprint, b -> autoSprint = !autoSprint);
-                addToggle("Auto Respawn", autoRespawn, b -> autoRespawn = !autoRespawn);
-                addToggle("HitSound", hitSound, b -> hitSound = !hitSound);
-            } else if (currentTab.equals("Combat")) {
-                addToggle("KillAura", killAura, b -> killAura = !killAura);
-                addToggle("TriggerBot", triggerBot, b -> triggerBot = !triggerBot);
-            } else if (currentTab.equals("Client")) {
-                addToggle("Interface", interfaceMod, b -> interfaceMod = !interfaceMod);
-                addToggle("Lite Mode", liteMode, b -> liteMode = !liteMode);
-            }
+            addBtn(cx, cy, "KillAura (+30)", () -> killAura, () -> killAura = !killAura);
+            addBtn(cx, cy + 24, "TriggerBot (+10)", () -> triggerBot, () -> triggerBot = !triggerBot);
+            addBtn(cx, cy + 48, "Fly (+15)", () -> flyMod, () -> flyMod = !flyMod);
+            addBtn(cx, cy + 72, "AutoSprint", () -> autoSprint, () -> autoSprint = !autoSprint);
+            addBtn(cx, cy + 96, "NoHurtCam", () -> noHurtCam, () -> noHurtCam = !noHurtCam);
 
             this.addDrawableChild(ButtonWidget.builder(
-                    Text.literal("Done"), b -> this.close()
-            ).dimensions(cx - 100, cy + 130, 200, 20).build());
+                    Text.literal("Close"), b -> this.close()
+            ).dimensions(cx - 100, cy + 128, 200, 20).build());
         }
 
-        private void addToggle(String name, boolean val, java.util.function.Consumer<ButtonWidget> action) {
-            int cx = this.width / 2;
-            int yPos = this.height / 4 - 5 + getTrackedY();
+        private void addBtn(int cx, int y, String name, java.util.function.BooleanSupplier getter, Runnable toggle) {
             this.addDrawableChild(ButtonWidget.builder(
-                    Text.literal(name + ": " + (val ? "§aON" : "§cOFF")), b -> {
-                        action.accept(b);
-                        b.setMessage(Text.literal(name + ": " + (val ? "§cOFF" : "§aON")));
-                        this.clearAndInit();
-                    }
-            ).dimensions(cx - 100, yPos, 200, 20).build());
-            incrementTrackedY();
-        }
-
-        private static int trackedY = 0;
-        private int getTrackedY() { return trackedY; }
-        private void incrementTrackedY() { trackedY += 24; }
-
-        public void clearAndInst() {}
-
-        @Override
-        public void clearAndInit() {
-            trackedY = 0;
-            super.clearAndInit();
+                    Text.literal(name + ": " + (getter.getAsBoolean() ? "§aON" : "§cOFF")), b -> {
+                        toggle.run();
+                        b.setMessage(Text.literal(name + ": " + (getter.getAsBoolean() ? "§aON" : "§cOFF")));
+                    }).dimensions(cx - 100, y, 200, 20).build());
         }
 
         @Override
         public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
             this.renderBackground(ctx, mouseX, mouseY, delta);
-            ctx.drawCenteredTextWithShadow(this.textRenderer, "§lOppka Client - v1.0.0", this.width / 2, this.height / 4 - 55, 0xFF00E5FF);
             super.render(ctx, mouseX, mouseY, delta);
         }
     }
