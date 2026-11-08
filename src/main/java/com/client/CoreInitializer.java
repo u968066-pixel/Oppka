@@ -96,7 +96,7 @@ public class CoreInitializer implements ClientModInitializer {
             mc.player.timeUntilRegen = 0;
         }
 
-        // Боевая логика: жесткий снап на цель + кулдаун (без автопрыжков)
+        // Боевая логика: жесткий снап на цель + кулдаун
         if (!mc.player.isSpectator()) {
             LivingEntity target = null;
 
@@ -125,8 +125,8 @@ public class CoreInitializer implements ClientModInitializer {
             }
 
             if (target != null) {
-                // Удар по кулдауну ванильного оружия
-                if (mc.player.getAttackCooldown_Progress(0.5f) >= 0.9f) {
+                // Исправленный метод кулдауна для 1.21.4 (getAttackCooldownProgress)
+                if (mc.player.getAttackCooldownProgress(0.5f) >= 0.9f) {
                     if (mc.interactionManager != null) {
                         mc.interactionManager.attackEntity(mc.player, target);
                         mc.player.swingHand(Hand.MAIN_HAND);
@@ -253,8 +253,10 @@ public class CoreInitializer implements ClientModInitializer {
         private static int trackedY = 0;
         private int getTrackedY() { return trackedY; }
         private void incrementTrackedY() { trackedY += 24; }
-        @Override
+        
+        // Убрали ошибочный @Override
         public void clearAndInst() {}
+
         @Override
         public void clearAndInit() {
             trackedY = 0;
