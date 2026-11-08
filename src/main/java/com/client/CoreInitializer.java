@@ -8,10 +8,6 @@ import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import org.lwjgl.glfw.GLFW;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-
 public class CoreInitializer implements ClientModInitializer {
     public static final String MOD_ID = "internal_client";
 
@@ -22,10 +18,10 @@ public class CoreInitializer implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        // Регистрация клавиши открытия GUI (Правый Shift) — исправлено KEY_SYM на SYM
+        // Регистрация клавиши открытия GUI (Правый Shift) — исправлено на KEYSYM
         toggleKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                 "key.internal_client.toggle",
-                InputUtil.Type.SYM,
+                InputUtil.Type.KEYSYM,
                 GLFW.GLFW_KEY_RIGHT_SHIFT,
                 "category.internal_client"
         ));
@@ -33,7 +29,7 @@ public class CoreInitializer implements ClientModInitializer {
         // Регистрация клавиши самоуничтожения (Клавиша DELETE)
         selfDestructKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                 "key.internal_client.destruct",
-                InputUtil.Type.SYM,
+                InputUtil.Type.KEYSYM,
                 GLFW.GLFW_KEY_DELETE,
                 "category.internal_client"
         ));
@@ -64,12 +60,10 @@ public class CoreInitializer implements ClientModInitializer {
         destroyed = true;
         active = false;
 
-        // Корректное удаление биндов для final-массива allKeys в 1.21.4
-        if (client.options != null && client.options.allKeys != null) {
-            List<KeyBinding> keysList = new ArrayList<>(Arrays.asList(client.options.allKeys));
-            keysList.remove(toggleKey);
-            keysList.remove(selfDestructKey);
-            client.options.allKeys = keysList.toArray(new KeyBinding[0]);
+        // Безопасный сброс биндов на UNKNOWN взамен изменения final-массива allKeys
+        if (toggleKey != null && selfDestructKey != null) {
+            toggleKey.setBoundKey(InputUtil.UNKNOWN_KEY);
+            selfDestructKey.setBoundKey(InputUtil.UNKNOWN_KEY);
         }
 
         System.gc();
