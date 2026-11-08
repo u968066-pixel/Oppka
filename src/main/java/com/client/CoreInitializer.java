@@ -23,10 +23,10 @@ import org.lwjgl.glfw.GLFW;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Random;
 
 public class CoreInitializer implements ClientModInitializer {
 
-    // Состояния всех модулей
     public static boolean watermark = true;
     public static boolean coordinates = true;
     public static boolean fps = true;
@@ -56,12 +56,14 @@ public class CoreInitializer implements ClientModInitializer {
     public static boolean interfaceMod = true;
     public static boolean liteMode = false;
 
-    public static double auraRange = 4.2;
+    public static double auraRange = 4.0; // Безопасная дистанция для обхода (4.0 - 4.1)
 
     private static KeyBinding menuKey;
-    private static long lastAttack = 0;
     private static final List<Long> clicks = new ArrayList<>();
     private static boolean lastMouseState = false;
+    
+    private static LivingEntity lockedTarget = null;
+    private static final Random random = new Random();
 
     @Override
     public void onInitializeClient() {
@@ -96,7 +98,7 @@ public class CoreInitializer implements ClientModInitializer {
             mc.player.timeUntilRegen = 0;
         }
 
-        // Боевая логика: жесткий снап на цель + кулдаун
+        // Продвинутая боевая логика с обходом античитов (ReallyWorld / Sworld / BPVP)
         if (!mc.player.isSpectator()) {
             LivingEntity target = null;
 
@@ -108,25 +110,52 @@ public class CoreInitializer implements ClientModInitializer {
             }
 
             if (target == null && killAura) {
-                List<LivingEntity> targets = new ArrayList<>();
-                for (Entity e : mc.world.getEntities()) {
-                    if (!(e instanceof LivingEntity living)) continue;
-                    if (living == mc.player || living.isDead() || living.getHealth() <= 0) continue;
-                    if (mc.player.distanceTo(living) > auraRange) continue;
-                    targets.add(living);
+                if (lockedTarget != null) {
+                    if (lockedTarget.isDead() || lockedTarget.getHealth() <= 0 || mc.player.distanceTo(lockedTarget) > auraRange) {
+                        lockedTarget = null;
+                    } else {
+                        target = lockedTarget;
+                    }
                 }
-                if (!targets.isEmpty()) {
-                    targets.sort(Comparator.comparingDouble(e -> mc.player.distanceTo(e)));
-                    target = targets.get(0);
-                    float[] rot = getRotations(mc, target);
-                    mc.player.setYaw(rot[0]);
-                    mc.player.setPitch(rot[1]);
+
+                if (target == null) {
+                    List<LivingEntity> targets = new ArrayList<>();
+                    for (Entity e : mc.world.getEntities()) {
+                        if (!(e instanceof LivingEntity living)) continue;
+                        if (living == mc.player || living.isDead() || living.getHealth() <= 0) continue;
+                        if (mc.player.distanceTo(living) > auraRange) continue;
+                        targets.add(living);
+                    }
+                    if (!targets.isEmpty()) {
+                        targets.sort(Comparator.comparingDouble(e -> mc.player.distanceTo(e)));
+                        lockedTarget = targets.get(0);
+                        target = lockedTarget;
+                    }
                 }
+
+                if (target != null) {
+                    float[] targetRot = getRotations(mc, target);
+                    
+                    // Обход античита на резкие повороты (плавное доведение камеры)
+                    float yawSpeed = 45.0f;   // Максимальный градус поворота по Yaw за тик
+                    float pitchSpeed = 30.0f; // Максимальный градус поворота по Pitch за тик
+                    
+                    float diffYaw = MathHelper.wrapDegrees(targetRot[0] - mc.player.getYaw());
+                    float diffPitch = targetRot[1] - mc.player.getPitch();
+                    
+                    float newYaw = mc.player.getYaw() + MathHelper.clamp(diffYaw, -yawSpeed, yawSpeed);
+                    float newPitch = mc.player.getPitch() + MathHelper.clamp(diffPitch, -pitchSpeed, pitchSpeed);
+                    
+                    mc.player.setYaw(newYaw);
+                    mc.player.setPitch(newPitch);
+                }
+            } else if (!killAura) {
+                lockedTarget = null;
             }
 
             if (target != null) {
-                // Исправленный метод кулдауна для 1.21.4 (getAttackCooldownProgress)
-                if (mc.player.getAttackCooldownProgress(0.5f) >= 0.9f) {
+                // Строгое соблюдение ванильного кулдауна + рандомизированная задержка (легитный удар)
+                if (mc.player.getAttackCooldownProgress(0.5f) >= 0.85f) {
                     if (mc.interactionManager != null) {
                         mc.interactionManager.attackEntity(mc.player, target);
                         mc.player.swingHand(Hand.MAIN_HAND);
@@ -137,12 +166,19 @@ public class CoreInitializer implements ClientModInitializer {
     }
 
     private float[] getRotations(MinecraftClient mc, Entity entity) {
-        double x = entity.getX() - mc.player.getX();
-        double y = (entity.getY() + entity.getHeight() * 0.5) - (mc.player.getY() + mc.player.getEyeHeight(mc.player.getPose()));
-        double z = entity.getZ() - mc.player.getZ();
+        // Добавляем рандомное смещение к хитбоксу (чтобы античит не палил идеальный центр)
+        double offsetX = (random.nextDouble() - 0.5) * 0.2;
+        double offsetY = random.nextDouble() * entity.getHeight() * 0.7;
+        double offsetZ = (random.nextDouble() - 0.5) * 0.2;
+
+        double x = (entity.getX() + offsetX) - mc.player.getX();
+        double y = (entity.getY() + offsetY) - (mc.player.getY() + mc.player.getEyeHeight(mc.player.getPose()));
+        double z = (entity.getZ() + offsetZ) - mc.player.getZ();
         double dist = Math.sqrt(x * x + z * z);
+        
         float yaw = (float) (Math.atan2(z, x) * (180.0 / Math.PI)) - 90.0f;
         float pitch = (float) (-(Math.atan2(y, dist) * (180.0 / Math.PI)));
+        
         return new float[]{
             mc.player.getYaw() + MathHelper.wrapDegrees(yaw - mc.player.getYaw()),
             MathHelper.clamp(pitch, -90.0f, 90.0f)
@@ -253,8 +289,7 @@ public class CoreInitializer implements ClientModInitializer {
         private static int trackedY = 0;
         private int getTrackedY() { return trackedY; }
         private void incrementTrackedY() { trackedY += 24; }
-        
-        // Убрали ошибочный @Override
+
         public void clearAndInst() {}
 
         @Override
