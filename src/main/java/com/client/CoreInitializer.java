@@ -29,16 +29,20 @@ import java.util.Random;
 
 public class CoreInitializer implements ClientModInitializer {
 
-    // --- Полный набор модулей ---
     public static boolean killAura = true;
     public static boolean triggerBot = true;
     public static boolean flyMod = false;
     public static boolean autoSprint = true;
     public static boolean noHurtCam = true;
-    public static boolean autoCrit = true; // Автоматические критические удары
     public static boolean strictBypass = true;
 
-    public static double auraRange = 3.1;
+    // Переменные, которые требует HudManager.java для компиляции
+    public static boolean watermark = true;
+    public static boolean coordinates = true;
+    public static boolean fps = true;
+    public static boolean timeMod = true;
+
+    public static double auraRange = 3.05;
     private static KeyBinding menuKey;
     private static long lastAttackTime = 0;
     private static final Random random = new Random();
@@ -62,18 +66,18 @@ public class CoreInitializer implements ClientModInitializer {
             }
         }
 
-        // Модуль: NoHurtCam
+        // Модуль 5: NoHurtCam
         if (noHurtCam && mc.player.hurtTime > 0) {
             mc.player.hurtTime = 0;
             mc.player.timeUntilRegen = 0;
         }
 
-        // Модуль: AutoSprint
+        // Модуль 4: AutoSprint
         if (autoSprint && !mc.player.isSneaking() && !mc.player.horizontalCollision && mc.player.input.movementForward > 0f) {
             mc.player.setSprinting(true);
         }
 
-        // Продвинутый Motion-Fly с пакетной симуляцией опоры
+        // Усиленный Motion-Fly с обходом через OnGroundOnly
         if (flyMod) {
             double vY = 0.0;
             if (mc.options.jumpKey.isPressed()) {
@@ -110,7 +114,7 @@ public class CoreInitializer implements ClientModInitializer {
 
         LivingEntity target = null;
 
-        // TriggerBot проверка
+        // Модуль 2: TriggerBot
         if (triggerBot && mc.crosshairTarget != null && mc.crosshairTarget.getType() == HitResult.Type.ENTITY) {
             EntityHitResult hit = (EntityHitResult) mc.crosshairTarget;
             if (hit.getEntity() instanceof LivingEntity living && isValidTarget(mc, living)) {
@@ -118,7 +122,7 @@ public class CoreInitializer implements ClientModInitializer {
             }
         }
 
-        // KillAura поиск и приоритизация целей
+        // Модуль 1: KillAura
         if (target == null && killAura) {
             List<LivingEntity> targets = new ArrayList<>();
             for (Entity e : mc.world.getEntities()) {
@@ -134,22 +138,16 @@ public class CoreInitializer implements ClientModInitializer {
             }
         }
 
-        // Исполнительный блок атаки
+        // Логика атаки со сглаживанием ротаций (без авто-прыжка)
         if (target != null && (killAura || (triggerBot && target != null))) {
             float[] rotations = getSmoothRotations(mc, target);
             float targetYaw = rotations[0];
             float targetPitch = rotations[1];
 
             long currentMillis = System.currentTimeMillis();
-            long dynamicDelay = 260 + random.nextInt(120); 
+            long dynamicDelay = 280 + random.nextInt(140); 
 
-            if (currentMillis - lastAttackTime >= dynamicDelay && mc.player.getAttackCooldownProgress(0.5f) >= 0.85f) {
-                
-                // Легитный микро-прыжок для критических ударов (AutoCrit)
-                if (autoCrit && mc.player.isOnGround() && !mc.player.isSubmergedInWater() && !mc.player.isGliding() && !mc.player.isSprinting()) {
-                    mc.player.jump();
-                }
-
+            if (currentMillis - lastAttackTime >= dynamicDelay && mc.player.getAttackCooldownProgress(0.5f) >= 0.82f) {
                 mc.player.setYaw(targetYaw);
                 mc.player.setPitch(targetPitch);
 
@@ -169,8 +167,9 @@ public class CoreInitializer implements ClientModInitializer {
 
     private float[] getSmoothRotations(MinecraftClient mc, Entity entity) {
         Vec3d eyePos = mc.player.getEyePos();
+        
         double targetX = entity.getX();
-        double targetY = entity.getY() + (entity.getHeight() * 0.5);
+        double targetY = entity.getY() + (entity.getHeight() * 0.45);
         double targetZ = entity.getZ();
 
         double dx = targetX - eyePos.x;
@@ -187,7 +186,7 @@ public class CoreInitializer implements ClientModInitializer {
         float diffYaw = MathHelper.wrapDegrees(rawYaw - currentYaw);
         float diffPitch = rawPitch - currentPitch;
 
-        float smoothFactor = 0.7f; 
+        float smoothFactor = 0.6f; 
         float smoothedYaw = currentYaw + diffYaw * smoothFactor;
         float smoothedPitch = MathHelper.clamp(currentPitch + diffPitch * smoothFactor, -90.0f, 90.0f);
 
@@ -195,34 +194,26 @@ public class CoreInitializer implements ClientModInitializer {
     }
 
     private void onRenderHud(DrawContext ctx, net.minecraft.client.render.RenderTickCounter tickCounter) {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.player == null || mc.options.hudHidden) return;
-        TextRenderer tr = mc.textRenderer;
-        String status = "Oppka [MAX Edition] | KA: " + (killAura ? "ON" : "OFF") +
-                        " | TB: " + (triggerBot ? "ON" : "OFF") +
-                        " | Crit: " + (autoCrit ? "ON" : "OFF") +
-                        " | Fly: " + (flyMod ? "ON" : "OFF");
-        ctx.drawTextWithShadow(tr, status, 4, 4, 0x00FF99);
+        // Оставляем пустым, так как HUD управляется отдельным HudManager.java
     }
 
     public static class OppkaMenuScreen extends Screen {
-        public OppkaMenuScreen() { super(Text.literal("Oppka Max Menu")); }
+        public OppkaMenuScreen() { super(Text.literal("Oppka Imba Menu")); }
 
         @Override
         protected void init() {
             int cx = this.width / 2;
-            int cy = this.height / 4 - 40;
+            int cy = this.height / 4 - 30;
 
             addBtn(cx, cy, "KillAura", () -> killAura, () -> killAura = !killAura);
-            addBtn(cx, cy + 22, "TriggerBot", () -> triggerBot, () -> triggerBot = !triggerBot);
-            addBtn(cx, cy + 44, "AutoCrit", () -> autoCrit, () -> autoCrit = !autoCrit);
-            addBtn(cx, cy + 66, "Motion-Fly", () -> flyMod, () -> flyMod = !flyMod);
-            addBtn(cx, cy + 88, "AutoSprint", () -> autoSprint, () -> autoSprint = !autoSprint);
-            addBtn(cx, cy + 110, "Strict Bypass", () -> strictBypass, () -> strictBypass = !strictBypass);
+            addBtn(cx, cy + 24, "TriggerBot", () -> triggerBot, () -> triggerBot = !triggerBot);
+            addBtn(cx, cy + 48, "Motion-Fly", () -> flyMod, () -> flyMod = !flyMod);
+            addBtn(cx, cy + 72, "AutoSprint", () -> autoSprint, () -> autoSprint = !autoSprint);
+            addBtn(cx, cy + 96, "Strict Bypass", () -> strictBypass, () -> strictBypass = !strictBypass);
 
             this.addDrawableChild(ButtonWidget.builder(
                     Text.literal("Close"), b -> this.close()
-            ).dimensions(cx - 100, cy + 138, 200, 20).build());
+            ).dimensions(cx - 100, cy + 128, 200, 20).build());
         }
 
         private void addBtn(int cx, int y, String name, java.util.function.BooleanSupplier getter, Runnable toggle) {
